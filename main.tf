@@ -20,7 +20,7 @@ resource "aws_vpc" "nginx-vpc" {
 
 # Create subnet for the vpc 
 resource "aws_subnet" "subnet-public-1" {
-  vpc_id                  = aws_vpc.nginx-vpc.id // Referencing the id of the VPC from abouve code block
+  vpc_id                  = aws_vpc.nginx-vpc.id // Referencing the id of the VPC from above code block
   cidr_block              = "10.0.1.0/24"
   map_public_ip_on_launch = "true" // Makes this a public subnet
   availability_zone       = "us-east-1"
@@ -45,7 +45,7 @@ resource "aws_route_table" "prod-public-crt" {
 
 # Associate the route table with the public subnet
 resource "aws_route_table_association" "prod-crta-public-subnet-1" {
-    subnet_id      = aws_subnet.prod-subnet-public-1.id
+    subnet_id      = aws_subnet.subnet-public-1.id
     route_table_id = aws_route_table.prod-public-crt.id
 }
 
@@ -114,7 +114,7 @@ resource "aws_instance" "nginx_server" {
 
 # Steps for EC2 apache web server
 # Create a VPC
-resource "aws_vpc" "app_vpc" {
+resource "aws_vpc" "apache_vpc" {
     cidr_block = var.vpc_cidr
   
     tags = {
@@ -122,27 +122,30 @@ resource "aws_vpc" "app_vpc" {
     }
 }
 
+# Create internet gateway
 resource "aws_internet_gateway" "igw" {
-    vpc_id = aws_vpc.app_vpc.id
+    vpc_id = aws_vpc.apache_vpc.id
   
     tags = {
       Name = "vpc_igw"
     }
 }
 
-resource "aws_subnet" "public_subnet" {
-    vpc_id            = aws_vpc.app_vpc.id
+# Create public subnet
+resource "aws_subnet" "apache_public_subnet" {
+    vpc_id            = aws_vpc.apache_vpc.id
     cidr_block        = var.public_subnet_cidr
     map_public_ip_on_launch = true
     availability_zone = "us-east-1"
   
     tags = {
-      Name = "public-subnet"
+      Name = "apache-public-subnet"
     }
 }
   
+# Crete route table
 resource "aws_route_table" "public_rt" {
-    vpc_id = aws_vpc.app_vpc.id
+    vpc_id = aws_vpc.apache_vpc.id
   
     route {
       cidr_block = "0.0.0.0/0"
@@ -150,10 +153,11 @@ resource "aws_route_table" "public_rt" {
     }
   
     tags = {
-      Name = "public_rt"
+      Name = "apache-public_rt"
     }
 }
   
+# Associate route table with public subnet
 resource "aws_route_table_association" "public_rt_asso" {
     subnet_id      = aws_subnet.public_subnet.id
     route_table_id = aws_route_table.public_rt.id
@@ -164,7 +168,7 @@ resource "aws_instance" "web" {
     ami             = "ami-005e54dee72cc1d00" 
     instance_type   = var.instance_type
     key_name        = var.instance_key
-    subnet_id       = aws_subnet.public_subnet.id
+    subnet_id       = aws_subnet.apache_public_subnet.id
     security_groups = [aws_security_group.sg.id]
   
     user_data = <<-EOF
@@ -184,5 +188,18 @@ resource "aws_instance" "web" {
     } 
 }
 
+# Create Application Load Balancer
+resource "aws_lb" "test-lb" {
+    name               = "test-lb-tf"
+    internal           = false
+    load_balancer_type = "application"
+    security_groups    = [aws_security_group.lb_sg.id]
+    subnets            = [aws_subnet.subnet-public-1.id]
   
+    enable_deletion_protection = true
+  
+    tags = {
+      Environment = "production"
+    }
+  }  
   
